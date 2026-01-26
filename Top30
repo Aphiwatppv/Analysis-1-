@@ -1,0 +1,99 @@
+WITH base AS (
+    SELECT
+        lotnumber,
+        trigger_id,
+        trigger_date,
+        basictype,
+        cometsopnumber,
+        newopnumber,
+        CASE
+            WHEN newopnumber    = '2055' THEN 'IN'
+            WHEN cometsopnumber = '2055' THEN 'OUT'
+        END AS move_type,
+        CASE
+            WHEN newopnumber    = '2055' THEN cometsopnumber
+            WHEN cometsopnumber = '2055' THEN newopnumber
+        END AS pe_gate
+    FROM trigger_table
+    WHERE lotnumber LIKE 'ZA%'
+      AND cometsopnumber <> '(null)'
+      AND newopnumber   <> '(null)'
+      AND ('2055' IN (cometsopnumber, newopnumber))
+),
+sequenced AS (
+    SELECT
+        b.*,
+        SUM(CASE WHEN move_type = 'IN' THEN 1 ELSE 0 END)
+            OVER (
+                PARTITION BY lotnumber, pe_gate
+                ORDER BY trigger_date, trigger_id
+            ) AS grp
+    FROM base b
+),
+paired AS (
+    SELECT
+        lotnumber,
+        basictype,
+        pe_gate,
+        grp,
+        MIN(CASE WHEN move_type = 'IN'  THEN trigger_date END) AS movein,
+        MIN(CASE WHEN move_type = 'OUT' THEN trigger_date END) AS moveout
+    FROM sequenced
+    GROUP BY lotnumber, basictype, pe_gate, grp
+)
+SELECT *
+FROM (
+    SELECT
+        lotnumber              AS LOT_ID,
+        movein                 AS MOVEIN,
+        moveout                AS MOVEOUT,
+
+        /* duration from movein until now */
+        (SYSDATE - movein)                AS TIME_SPENT_DAYS,
+        (SYSDATE - movein) * 1440         AS TIME_SPENT_MINUTES,
+
+        basictype              AS BASIC_TYPE,
+
+        CASE pe_gate
+            WHEN '4150' THEN 'S1'
+            WHEN '4250' THEN 'S2'
+            WHEN '4350' THEN 'S3'
+            ELSE NULL
+        END AS TEST_MODE,
+
+        CASE pe_gate
+            WHEN '4150' THEN 'PE Gate 1'
+            WHEN '4250' THEN 'PE Gate 2'
+            WHEN '4350' THEN 'PE Gate 3'
+            ELSE 'PE Gate ' || pe_gate
+        END AS PE_GATE,
+
+        'Lot_stopped_for_ALF_assessment To Waiting instructions PE Gate ' || pe_gate
+            AS REMARK
+    FROM paired
+    WHERE movein IS NOT NULL
+      AND moveout IS NULL
+    ORDER BY movein ASC
+)
+WHERE ROWNUM <= 30;
+
+
+
+public class LotMoveOpenModel
+{
+    public string LOT_ID { get; set; }
+
+    public DateTime MOVEIN { get; set; }
+    public DateTime? MOVEOUT { get; set; }   // always null here, but safe
+
+    public double TIME_SPENT_DAYS { get; set; }
+    public double TIME_SPENT_MINUTES { get; set; }
+
+    public string BASIC_TYPE { get; set; }
+
+    public string TEST_MODE { get; set; }
+    public string PE_GATE { get; set; }
+
+    public string REMARK { get; set; }
+}
+
