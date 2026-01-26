@@ -7,15 +7,13 @@ WITH base AS (
         cometsopnumber,
         newopnumber,
 
-        /* Identify MoveIn / MoveOut */
         CASE
-            WHEN newopnumber   = '2055' THEN 'IN'
+            WHEN newopnumber    = '2055' THEN 'IN'
             WHEN cometsopnumber = '2055' THEN 'OUT'
         END AS move_type,
 
-        /* PE Gate = the non-2055 OP */
         CASE
-            WHEN newopnumber   = '2055' THEN cometsopnumber
+            WHEN newopnumber    = '2055' THEN cometsopnumber
             WHEN cometsopnumber = '2055' THEN newopnumber
         END AS pe_gate
     FROM trigger_table
@@ -27,8 +25,6 @@ WITH base AS (
 sequenced AS (
     SELECT
         b.*,
-
-        /* count INs to form pairing groups */
         SUM(CASE WHEN move_type = 'IN' THEN 1 ELSE 0 END)
             OVER (
                 PARTITION BY lotnumber, pe_gate
@@ -42,7 +38,6 @@ paired AS (
         basictype,
         pe_gate,
         grp,
-
         MIN(CASE WHEN move_type = 'IN'  THEN trigger_date END) AS movein,
         MIN(CASE WHEN move_type = 'OUT' THEN trigger_date END) AS moveout
     FROM sequenced
@@ -53,19 +48,23 @@ SELECT
     movein,
     moveout,
 
-    /* Time spent (seconds) */
+    /* duration source */
     CASE
-        WHEN moveout IS NOT NULL THEN (moveout - movein) * 86400
-        ELSE (SYSDATE - movein) * 86400
-    END AS time_spent_sec,
+        WHEN moveout IS NOT NULL THEN (moveout - movein)
+        ELSE (SYSDATE - movein)
+    END AS time_spent_days,
+
+    /* duration in minutes */
+    CASE
+        WHEN moveout IS NOT NULL THEN (moveout - movein) * 1440
+        ELSE (SYSDATE - movein) * 1440
+    END AS time_spent_minutes,
 
     basictype,
 
-    /* Test Mode: S1, S2, S3... by MoveIn order */
     'S' || DENSE_RANK()
            OVER (PARTITION BY lotnumber ORDER BY movein) AS test_mode,
 
-    /* PE Gate label */
     CASE pe_gate
         WHEN '4150' THEN 'PE Gate 1'
         WHEN '4250' THEN 'PE Gate 2'
@@ -73,7 +72,6 @@ SELECT
         ELSE 'PE Gate ' || pe_gate
     END AS pe_gate,
 
-    /* Derived remark (logic-based, stable) */
     CASE
         WHEN moveout IS NOT NULL THEN
             'Lot_stopped_for_ALF_assessment To Processing_ALF_handling_instructions PE Gate ' || pe_gate
