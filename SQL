@@ -6,12 +6,10 @@ WITH base AS (
         basictype,
         cometsopnumber,
         newopnumber,
-
         CASE
             WHEN newopnumber    = '2055' THEN 'IN'
             WHEN cometsopnumber = '2055' THEN 'OUT'
         END AS move_type,
-
         CASE
             WHEN newopnumber    = '2055' THEN cometsopnumber
             WHEN cometsopnumber = '2055' THEN newopnumber
@@ -48,13 +46,12 @@ SELECT
     movein,
     moveout,
 
-    /* duration source */
+    /* duration */
     CASE
         WHEN moveout IS NOT NULL THEN (moveout - movein)
         ELSE (SYSDATE - movein)
     END AS time_spent_days,
 
-    /* duration in minutes */
     CASE
         WHEN moveout IS NOT NULL THEN (moveout - movein) * 1440
         ELSE (SYSDATE - movein) * 1440
@@ -62,9 +59,15 @@ SELECT
 
     basictype,
 
-    'S' || DENSE_RANK()
-           OVER (PARTITION BY lotnumber ORDER BY movein) AS test_mode,
+    /* ✅ Test Mode based on target OP (PE Gate) */
+    CASE pe_gate
+        WHEN '4150' THEN 'S1'
+        WHEN '4250' THEN 'S2'
+        WHEN '4350' THEN 'S3'
+        ELSE NULL
+    END AS test_mode,
 
+    /* PE Gate label */
     CASE pe_gate
         WHEN '4150' THEN 'PE Gate 1'
         WHEN '4250' THEN 'PE Gate 2'
@@ -72,6 +75,7 @@ SELECT
         ELSE 'PE Gate ' || pe_gate
     END AS pe_gate,
 
+    /* remark */
     CASE
         WHEN moveout IS NOT NULL THEN
             'Lot_stopped_for_ALF_assessment To Processing_ALF_handling_instructions PE Gate ' || pe_gate
