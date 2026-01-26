@@ -1,0 +1,50 @@
+
+
+I use this query 
+
+select lotnumber , TRIGGER_ID ,TRANSACTIONREMARK,COMETSOPNUMBER,NEWOPNUMBER,BASICTYPE,TRIGGER_DATE from TRIGGER_TABLE 
+WHERE lotnumber = 'ZA537492' and COMETSOPNUMBER != '(null)'and NEWOPNUMBER != '(null)' and (NEWOPNUMBER = '2055' or COMETSOPNUMBER = '2055')
+ORDER BY TRIGGER_ID ASC
+
+and it will return 
+
+case 1 
+
+lotnumber , TRIGGER_ID ,TRANSACTIONREMARK,COMETSOPNUMBER,NEWOPNUMBER,BASICTYPE,TRIGGER_DATE
+ZA537492	29	Lot_stopped_for_ALF_assessment			4150	2055	M5116B		20.09.2025 03:52:52
+ZA537492	33	Processing_ALF_handling_instructions	2055	4150	M5116B		20.09.2025 03:59:15
+ZA537492	65	Lot_stopped_for_ALF_assessment			4250	2055	M5116B		04.10.2025 10:58:11
+ZA537492	69	Processing_ALF_handling_instructions	2055	4250	M5116B		04.10.2025 11:05:46
+ZA537492	95	Lot_stopped_for_ALF_assessment			4350	2055	M5116B		09.10.2025 07:40:50
+ZA537492	98	Processing_ALF_handling_instructions	2055	4350	M5116B		09.10.2025 07:45:42
+
+
+and 
+
+case 2
+
+select lotnumber , TRIGGER_ID ,TRANSACTIONREMARK,COMETSOPNUMBER,NEWOPNUMBER,BASICTYPE,TRIGGER_DATE from TRIGGER_TABLE 
+WHERE lotnumber = 'ZA539411' and COMETSOPNUMBER != '(null)'and NEWOPNUMBER != '(null)' and (NEWOPNUMBER = '2055' or COMETSOPNUMBER = '2055')
+ORDER BY TRIGGER_ID ASC
+
+lotnumber , TRIGGER_ID ,TRANSACTIONREMARK,COMETSOPNUMBER,NEWOPNUMBER,BASICTYPE,TRIGGER_DATE
+ZA539411	40	Lot_stopped_for_ALF_assessment			4150	2055	M5116B	04.10.2025 11:30:43
+ZA539411	44	Processing_ALF_handling_instructions	2055	4150	M5116B	06.10.2025 17:34:02
+ZA539411	46	Lot_stopped_for_ALF_assessment			4150	2055	M5116B	06.10.2025 17:34:02
+ZA539411	50	Processing_ALF_handling_instructions	2055	4150	M5116B	20.11.2025 14:19:53
+ZA539411	71	Lot_stopped_for_ALF_assessment			4150	2055	M5116B	22.11.2025 19:09:50
+
+
+I want this table
+
+lot_id , 			MoveIn  , 			Moveout ,    time_spent in oper   , BASICTYPE , Test Mode , PE Gate , Remark
+ZA537492, 20.09.2025 03:52:52, 20.09.2025 03:59:15 ,  (Moveout - MoveIn) , M5116B , S1 ,  PE Gate 1 , Lot_stopped_for_ALF_assessment To Processing_ALF_handling_instructions PE Gate 4150
+ZA537492, 04.10.2025 10:58:11, 04.10.2025 11:05:46 ,  (Moveout - MoveIn) , M5116B , S2 ,  PE Gate 2 , Lot_stopped_for_ALF_assessment To Processing_ALF_handling_instructions PE Gate 4250
+ZA537492, 09.10.2025 07:40:50, 09.10.2025 07:45:42 ,  (Moveout - MoveIn) , M5116B , S3 ,  PE Gate 3 , Lot_stopped_for_ALF_assessment To Processing_ALF_handling_instructions PE Gate 4350
+ZA539411, 04.10.2025 11:30:43, 06.10.2025 17:34:02 ,  (Moveout - MoveIn) , M5116B , S1 ,  PE Gate 1 , Lot_stopped_for_ALF_assessment To Processing_ALF_handling_instructions PE Gate 4150
+ZA539411, 06.10.2025 17:34:02, 20.11.2025 14:19:53 ,  (Moveout - MoveIn) , M5116B , S1 ,  PE Gate 1 , Lot_stopped_for_ALF_assessment To Processing_ALF_handling_instructions PE Gate 4150
+ZA539411, 06.10.2025 17:34:02, 20.11.2025 14:19:53 ,  (Current Time - MoveIn) , M5116B , S1 ,  PE Gate 1 , Lot_stopped_for_ALF_assessment To Waiting instructions PE Gate 4150
+
+
+
+Can you please provide the best way to achieve this table
