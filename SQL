@@ -1,0 +1,82 @@
+WITH base AS (
+    SELECT
+        lotnumber,
+        trigger_id,
+        transactionremark,
+        cometsopnumber,
+        newopnumber,
+        basictype,
+        trigger_date,
+        /* PE gate = the op that is NOT 2055 */
+        CASE
+            WHEN cometsopnumber = '2055' THEN newopnumber
+            WHEN newopnumber   = '2055' THEN cometsopnumber
+            ELSE NULL
+        END AS pe_gate
+    FROM trigger_table
+    WHERE lotnumber LIKE 'ZA%'                      -- optional filter
+      AND cometsopnumber <> '(null)'
+      AND newopnumber   <> '(null)'
+      AND ('2055' IN (cometsopnumber, newopnumber)) -- only rows involving 2055
+      AND transactionremark IN (
+            'Lot_stopped_for_ALF_assessment',
+            'Processing_ALF_handling_instructions'
+      )
+),
+pairing AS (
+    SELECT
+        b.*,
+        /* running counter for each MoveIn; used to pair with the following MoveOut */
+        SUM(CASE WHEN transactionremark = 'Lot_stopped_for_ALF_assessment' THEN 1 ELSE 0 END)
+            OVER (PARTITION BY lotnumber, pe_gate ORDER BY trigger_date, trigger_id) AS grp
+    FROM base b
+),
+moves AS (
+    SELECT
+        lotnumber,
+        basictype,
+        pe_gate,
+
+        MIN(CASE WHEN transactionremark = 'Lot_stopped_for_ALF_assessment'
+                 THEN trigger_date END) AS movein,
+
+        MIN(CASE WHEN transactionremark = 'Processing_ALF_handling_instructions'
+                 THEN trigger_date END) AS moveout,
+
+        MIN(CASE WHEN transactionremark = 'Lot_stopped_for_ALF_assessment'
+                 THEN transactionremark END) AS in_remark,
+
+        MIN(CASE WHEN transactionremark = 'Processing_ALF_handling_instructions'
+                 THEN transactionremark END) AS out_remark
+    FROM pairing
+    GROUP BY lotnumber, basictype, pe_gate, grp
+)
+SELECT
+    lotnumber AS lot_id,
+    movein,
+    moveout,
+
+    /* time spent */
+    CASE
+        WHEN moveout IS NOT NULL THEN (moveout - movein) * 24 * 60 * 60
+        ELSE (SYSDATE - movein) * 24 * 60 * 60
+    END AS time_spent_sec,
+
+    basictype,
+
+    /* Test Mode: S1, S2, S3 per lot by movein order */
+    'S' || DENSE_RANK() OVER (PARTITION BY lotnumber ORDER BY movein) AS test_mode,
+
+    /* PE Gate label */
+    'PE Gate ' || DENSE_RANK() OVER (PARTITION BY lotnumber ORDER BY pe_gate) AS pe_gate_label,
+
+    /* Remark */
+    CASE
+        WHEN moveout IS NOT NULL THEN
+            in_remark || ' To ' || out_remark || ' PE Gate ' || pe_gate
+        ELSE
+            in_remark || ' To Waiting instructions PE Gate ' || pe_gate
+    END AS remark
+FROM moves
+WHERE movein IS NOT NULL
+ORDER BY lotnumber, movein;
