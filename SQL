@@ -2,53 +2,50 @@ WITH base AS (
     SELECT
         lotnumber,
         trigger_id,
-        transactionremark,
+        trigger_date,
+        basictype,
         cometsopnumber,
         newopnumber,
-        basictype,
-        trigger_date,
-        /* PE gate = the op that is NOT 2055 */
+
+        /* Identify MoveIn / MoveOut */
         CASE
-            WHEN cometsopnumber = '2055' THEN newopnumber
+            WHEN newopnumber   = '2055' THEN 'IN'
+            WHEN cometsopnumber = '2055' THEN 'OUT'
+        END AS move_type,
+
+        /* PE Gate = the non-2055 OP */
+        CASE
             WHEN newopnumber   = '2055' THEN cometsopnumber
-            ELSE NULL
+            WHEN cometsopnumber = '2055' THEN newopnumber
         END AS pe_gate
     FROM trigger_table
-    WHERE lotnumber LIKE 'ZA%'                      -- optional filter
+    WHERE lotnumber LIKE 'ZA%'
       AND cometsopnumber <> '(null)'
       AND newopnumber   <> '(null)'
-      AND ('2055' IN (cometsopnumber, newopnumber)) -- only rows involving 2055
-      AND transactionremark IN (
-            'Lot_stopped_for_ALF_assessment',
-            'Processing_ALF_handling_instructions'
-      )
+      AND ('2055' IN (cometsopnumber, newopnumber))
 ),
-pairing AS (
+sequenced AS (
     SELECT
         b.*,
-        /* running counter for each MoveIn; used to pair with the following MoveOut */
-        SUM(CASE WHEN transactionremark = 'Lot_stopped_for_ALF_assessment' THEN 1 ELSE 0 END)
-            OVER (PARTITION BY lotnumber, pe_gate ORDER BY trigger_date, trigger_id) AS grp
+
+        /* count INs to form pairing groups */
+        SUM(CASE WHEN move_type = 'IN' THEN 1 ELSE 0 END)
+            OVER (
+                PARTITION BY lotnumber, pe_gate
+                ORDER BY trigger_date, trigger_id
+            ) AS grp
     FROM base b
 ),
-moves AS (
+paired AS (
     SELECT
         lotnumber,
         basictype,
         pe_gate,
+        grp,
 
-        MIN(CASE WHEN transactionremark = 'Lot_stopped_for_ALF_assessment'
-                 THEN trigger_date END) AS movein,
-
-        MIN(CASE WHEN transactionremark = 'Processing_ALF_handling_instructions'
-                 THEN trigger_date END) AS moveout,
-
-        MIN(CASE WHEN transactionremark = 'Lot_stopped_for_ALF_assessment'
-                 THEN transactionremark END) AS in_remark,
-
-        MIN(CASE WHEN transactionremark = 'Processing_ALF_handling_instructions'
-                 THEN transactionremark END) AS out_remark
-    FROM pairing
+        MIN(CASE WHEN move_type = 'IN'  THEN trigger_date END) AS movein,
+        MIN(CASE WHEN move_type = 'OUT' THEN trigger_date END) AS moveout
+    FROM sequenced
     GROUP BY lotnumber, basictype, pe_gate, grp
 )
 SELECT
@@ -56,27 +53,33 @@ SELECT
     movein,
     moveout,
 
-    /* time spent */
+    /* Time spent (seconds) */
     CASE
-        WHEN moveout IS NOT NULL THEN (moveout - movein) * 24 * 60 * 60
-        ELSE (SYSDATE - movein) * 24 * 60 * 60
+        WHEN moveout IS NOT NULL THEN (moveout - movein) * 86400
+        ELSE (SYSDATE - movein) * 86400
     END AS time_spent_sec,
 
     basictype,
 
-    /* Test Mode: S1, S2, S3 per lot by movein order */
-    'S' || DENSE_RANK() OVER (PARTITION BY lotnumber ORDER BY movein) AS test_mode,
+    /* Test Mode: S1, S2, S3... by MoveIn order */
+    'S' || DENSE_RANK()
+           OVER (PARTITION BY lotnumber ORDER BY movein) AS test_mode,
 
     /* PE Gate label */
-    'PE Gate ' || DENSE_RANK() OVER (PARTITION BY lotnumber ORDER BY pe_gate) AS pe_gate_label,
+    CASE pe_gate
+        WHEN '4150' THEN 'PE Gate 1'
+        WHEN '4250' THEN 'PE Gate 2'
+        WHEN '4350' THEN 'PE Gate 3'
+        ELSE 'PE Gate ' || pe_gate
+    END AS pe_gate,
 
-    /* Remark */
+    /* Derived remark (logic-based, stable) */
     CASE
         WHEN moveout IS NOT NULL THEN
-            in_remark || ' To ' || out_remark || ' PE Gate ' || pe_gate
+            'Lot_stopped_for_ALF_assessment To Processing_ALF_handling_instructions PE Gate ' || pe_gate
         ELSE
-            in_remark || ' To Waiting instructions PE Gate ' || pe_gate
+            'Lot_stopped_for_ALF_assessment To Waiting instructions PE Gate ' || pe_gate
     END AS remark
-FROM moves
+FROM paired
 WHERE movein IS NOT NULL
 ORDER BY lotnumber, movein;
