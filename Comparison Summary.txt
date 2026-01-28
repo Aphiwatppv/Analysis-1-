@@ -1,0 +1,18 @@
+Comparison Summary
+Left Side (BB1P – N Test Type)
+
+The first dataset sent from the test floor to EBS was transmitted using BB1P with N Test Type, which represents new / normal data.
+
+This dataset contained 708 total parts, with 4 failing parts.
+
+Follow-up Retest (BB1P – F Test Type)
+
+After that, the user performed a retest using BB1P with F Test Type, which represents continuous testing.
+
+Technically, the F Test Type should send only the remaining parts that have not yet completed testing.
+
+In this case, the retest involved the same 4 failing parts.
+
+Why Analysis
+Key Question
+Why was the retest data not sent with BB1P F Test Type when the user retested the same parts?
